@@ -7,9 +7,8 @@ If your plugin does not need CSS, delete this file.
 
 */
 
-.test
+.test_text
 {
-    color: red;
-    outline: 2px solid red;
-    outline-offset: 5px;
+    user-select: text;
+    text-align: center;
 }
