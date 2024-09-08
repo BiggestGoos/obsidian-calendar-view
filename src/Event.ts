@@ -1,5 +1,5 @@
 
-interface Period 
+export interface Period 
 {
     start: Date;
     end: Date;
@@ -10,134 +10,156 @@ export class Event
 
     data: any;
 
-    parent: Event_List;
+    parent: Event_Container;
 
-    constructor(data: any, parent: Event_List)
+    constructor(data: any, parent: Event_Container)
     {
         this.data = data;
         this.parent = parent;
     }
 
-    async Display(): Promise<HTMLElement> 
+    Display(): HTMLElement
     {
-        let element = document.createElement("div");
+        let event = document.createElement("div");
 
-        element.classList.add("event");
+        event.classList.add("event");
 
-        element.createEl("p", { text: this.data.summary });
+        let title = this.data.summary
+        
+        event.createEl("p", { text: title });
+        event.createEl("p", { text: this.data.recurringEventId }).style.userSelect="all";
 
-        return element;
+        return event;
     }
 
 }
 
-export type Modifier = (event: any) => boolean;
+export type Modifier = (event: any) => any;
 
-export class Event_List
+export class Event_Container
 {
 
-    api: any;
+    parent: any;
+    title: string;
     period: Period;
-    calendars: Array<any>;
     modifier: Modifier | null;
-
+    
     events: Array<Event>;
 
-    constructor(api: any, start: Date, end: Date, calendars: Array<any>, modifier: Modifier | null = null)
+    container: HTMLElement;
+
+    constructor(parent: any, title: string, period: Period, modifier: Modifier | null = null)
     {
 
-        this.api = api;
-        this.period = { start, end };
-        this.calendars = calendars;
+        this.parent = parent;
+        this.title = title;
+        this.period = period;
         this.modifier = modifier;
 
         this.events = new Array<Event>();
-
-        console.log(this.period.start.toString() + " - " + this.period.end.toString());
 
     }
 
     async Load()
     {
 
-        const { getEvents } = this.api;
+        const { getEvents } = this.parent.api;
     
-        let calendars_ids: Array<any>;
+        let calendars_ids = new Array<any>();
 
-        this.calendars.forEach((calendar: any) => 
+        this.parent.calendars.forEach((calendar: any) => 
         {
             calendars_ids.push(calendar.id);
         });
  
-        // @ts-ignore
         const events = await getEvents({ startDate: window.moment(this.period.start), endDate: window.moment(this.period.end), include: calendars_ids });
 
         // Clears old events
         this.events.length = 0
+        
+        function is_json_string(str: string) {
+            try {
+                JSON.parse(str);
+            } catch (e) {
+                return false;
+            }
+            return true;
+        }
 
-        events.forEach((element: any) => 
+        if (this.modifier)
         {
-            if (this.modifier)
-            {
-                let modified = this.modifier(element);
-                if (modified != null)
-                    this.events.push(new Event(modified, this));
+
+            let tasks = new Array<Promise<any>>();
+
+            for (let event of events) {
+                const task: Promise<any> = new Promise(async (resolve, reject) => {
+                    try {
+                        if (!this || !this.modifier) {
+                            throw new Error("Modifier or context is missing");
+                        }
+
+                        let modified = await this.modifier(event);
+
+                        if (modified != null 
+                            && is_json_string(modified?.description) 
+                            && JSON.parse(modified?.description).version) 
+                        {
+                            this.events.push(new Event(modified, this));
+                        }
+
+                        resolve("success");
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+
+                tasks.push(task);
             }
-            else
-            {
-                this.events.push(new Event(element, this));
+
+            try {
+                await Promise.all(tasks);
+                // console.log("All tasks completed successfully.");
+            } catch (error) {
+                console.error("One or more tasks failed:", error);
             }
-        });
+
+        }
+        else
+        {
+            for (let event of events)
+            {
+                let new_event = new Event(event, this);
+                if (is_json_string(new_event.data?.description) 
+                    && JSON.parse(new_event.data?.description).version)
+                {
+                    this.events.push(new Event(event, this));
+                }
+            }
+        }
         
     }
             
     Display(): HTMLElement
     {
 
-        let element = document.createElement("div");
+        if (!this.container)
+            this.container = document.createElement("div");
+        else
+            this.container.empty()
+
+        this.container.classList.add("event_container")
+
+        this.container.createEl("h1", { cls: "title", text: this.title });
+    
+        let daily_events_block = this.container.createDiv({ cls: "event_block" });
 
         for (let event of this.events)
         {
-            let load = async () =>
-            {
-                element.appendChild(await event.Display());
-            }
-            load()
+            daily_events_block.appendChild(event.Display());
         }
 
-        return element;
-
-    }
-
-}
-
-export class Event_Container
-{
-
-    event_list: Event_List | null;
-
-    constructor(event_list: Event_List | null = null)
-    {
-        this.event_list = event_list
-    }
-
-    Display(): HTMLElement
-    {
-
-        let container = document.createElement("div");
-        container.classList.add("event_container")
-        
-        container.createEl("h1", { cls: "title", text: "Daily" });
-    
-        let daily_events_block = container.createDiv({ cls: "event_block" });
-
-        if (this.event_list)
-        {
-            container.appendChild(this.event_list.Display());
-        }
-
-        return container;
-
-    }
+        return this.container;
+ 
+    } 
 
 }

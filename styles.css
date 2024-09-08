@@ -28,7 +28,7 @@ If your plugin does not need CSS, delete this file.
 {
 
     width: 38.75vw;
-
+    
     background-color: lch(95, 4, var(--accent-h));
     outline: calc(var(--border-width) * 1) solid var(--background-modifier-border);
     border-radius: var(--radius-l);

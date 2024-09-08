@@ -29,7 +29,7 @@ export default class Calendar_View_Plugin extends Plugin {
 		console.log("unloded")
 		
 	}
- 
+
 	async Activate_Calendar_View()
 	{
 		const { workspace } = this.app;		

@@ -1,7 +1,46 @@
 import { ItemView, WorkspaceLeaf, Menu } from "obsidian";
 
-import { Event, Event_List, Modifier, Event_Container } from "src/Event"
+import { Event, Period, Event_Container, Modifier } from "src/Event"
 import { Create_Event_Modal } from "src/Create_Event";
+import { waitForDebugger } from "inspector";
+
+function Week_Period()
+{
+    let current = new Date();
+
+    // Monday based days
+    function week_day(date: Date) : number
+    {
+        let std_day = date.getDay()
+        return (std_day == 0)? 6 : std_day - 1
+    }
+
+    const day_time = 86400000;
+
+    let first = current.getTime() - ((week_day(current)) * day_time);
+    let last = first + (6 * day_time);
+
+    let start = new Date(first);
+    start.setHours(0, 0, 0, 0);
+    let end = new Date(last);
+    end.setHours(0, 0, 0, day_time - 1);
+
+    return { start, end };
+}
+
+function Today_Period()
+{
+    let current = new Date();
+
+    const day_time = 86400000;
+
+    let start = new Date(current);
+    start.setHours(0, 0, 0, 0);
+    let end = new Date(current);
+    end.setHours(0, 0, 0, day_time - 1);
+
+    return { start, end };
+}
 
 export const VIEW_CALENDAR_VIEW = "calendar-view";
 
@@ -10,14 +49,11 @@ export class Calendar_View extends ItemView {
     api: any;
     calendars: Array<any>;
 
+    daily_events: Event_Container;
+    weekly_events: Event_Container;
+
     constructor(leaf: WorkspaceLeaf) {
         super(leaf);
-
-        // @ts-ignore
-        this.api = this.app.plugins.plugins["google-calendar"].api
-
-        this.calendars = new Array<any>();
-
     }
     
     getViewType() {
@@ -28,6 +64,63 @@ export class Calendar_View extends ItemView {
         return "Calendar View";
     }
     
+    async load_data()
+    {
+
+        const { getCalendars } = this.api;
+
+        let calendars = await getCalendars();
+
+        calendars.forEach(async (calendar: any) => {
+            if (calendar.summary == "Uppgifter")
+            {
+                this.calendars.push(calendar);
+            }
+        });
+
+        var daily_task = this.daily_events.Load();
+        var weekly_task = this.weekly_events.Load();
+
+        await Promise.all([daily_task, weekly_task]);
+    }
+
+    unique_events: Array<String>;
+
+    async init_load_data()
+    {
+
+        console.log("Load data");
+
+        const { getEvent } = this.api;
+
+        this.daily_events = new Event_Container(this, "Daily", Today_Period(), 
+        (event: any) =>
+        {
+            if (event.eventType == "multiDay")
+                return null;
+            return event;
+        });
+
+        // Potential issue
+        this.unique_events = new Array<String>;
+        this.weekly_events = new Event_Container(this, "Weekly", Week_Period(), 
+        async (event: any) =>
+        {
+            if (event.eventType != "multiDay")
+                return null;
+            if (this.unique_events.includes(event.etag))
+                return null;
+            this.unique_events.push(event.etag);
+
+            let real_event = await getEvent(event.id)
+
+            return real_event;
+        });
+
+        await this.load_data();
+
+    }
+
     async add_event()
     {
 
@@ -45,25 +138,8 @@ export class Calendar_View extends ItemView {
 
         let main = container.createDiv({ cls: "main_frame" });
 
-        
-
-    }
-
-    async init_load()
-    {
-    
-        console.log("load data");
-
-        const { getCalendars } = this.api;
-
-        let calendars = await getCalendars();
-
-        calendars.forEach(async (calendar: any) => {
-            if (calendar.summary == "Uppgifter")
-            {
-                this.calendars.push(calendar);
-            }
-        });
+        main.appendChild(this.daily_events.Display())
+        main.appendChild(this.weekly_events.Display())
 
     }
 
@@ -71,19 +147,40 @@ export class Calendar_View extends ItemView {
 
         console.log("Open View")
 
-        await this.init_load();
+        // @ts-ignore
+        this.api = this.app.plugins.plugins["google-calendar"].api
 
-        console.log(this.calendars);
+        this.calendars = new Array<any>();
 
+        await this.init_load_data();
+        
         this.set_up()
+
+        this.registerInterval(
+            window.setInterval(() => 
+            {
+                this.refresh();
+            }, 5000)
+        );
  
     }
     
     async onClose() {
 
         console.log("Close View");
+        
+    }
 
-        // Nothing to clean up.
+    async refresh()
+    {
+
+        // Clear unique_events for getting weekly events
+        this.unique_events.length = 0
+        await this.load_data()
+        
+        this.daily_events.Display()
+        this.weekly_events.Display()
+
     }
 
     onPaneMenu(menu: Menu, source: string): void {
@@ -92,8 +189,7 @@ export class Calendar_View extends ItemView {
             item.setTitle("Refresh");
             item.setIcon("sync");
             item.onClick(() => {
-                this.onClose()
-                this.onOpen()
+                this.refresh()
             });
         });
     }

@@ -8,7 +8,7 @@ export class Create_Event_Modal extends Modal {
 	  	super(app);
 		this.api = api
 	}
-  
+
 	onOpen() {
 	  	
 		let { contentEl } = this;
@@ -31,19 +31,31 @@ export class Create_Event_Modal extends Modal {
 		button.onclick = async () =>
 		{
 
-			const { createEvent } = this.api
+			const { createEvent, updateEvent } = this.api
 
-			let test = await createEvent({
+			let argument = {
 				summary: text_field.value,
+				location: "Somewhere",
 				start: {
-				 dateTime: window.moment(new Date(start_date_field.value))
+				 dateTime: window.moment(new Date(start_date_field.value)),
+				 timeZone: "Europe/Stockholm"
 				},
 				end: {
-				 dateTime: window.moment(new Date(end_date_field.value))
-				}
-			})
+				 dateTime: window.moment(new Date(end_date_field.value)),
+				 timeZone: "Europe/Stockholm"
+				},
+				recurrence: ["RRULE:FREQ=DAILY;COUNT=10"]
+			}
 
-			console.log(test)
+			console.log(argument);
+
+			let test = await createEvent(argument);
+			
+			// test.recurrence = ["RRULE:FREQ=DAILY;COUNT=10"]
+
+			// test = await updateEvent(test, false);
+
+			// console.log(test);
 
 			// console.log(text_field.value)
 			// console.log(new Date(start_date_field.value))
